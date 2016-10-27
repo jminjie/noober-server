@@ -2,11 +2,12 @@
 {% block body %}
 <ul class="entries">
   {% for entry in entries %}
-  <li>Id: {{entry.id}} </li>  
+  <li>Id: {{entry.transaction_id}} </li>
+  <li>User Id: {{entry.user_id}} </li>  
   <li>Latitude: {{ entry.lat }} </li>
   <li>Longitude: {{entry.lon }} </li>
   <li>Timestamp: {{entry.timestamp|safe }} </li>
-  <li>Counterpart Id: {{entry.counterpart_id|safe }} </li>    
+  <li>Counterpart Id: {{entry.counterpart_user_id|safe }} </li>    
   <br>
   {% else %}
   <li><em>Unbelievable.  No entries here so far</em></li>
