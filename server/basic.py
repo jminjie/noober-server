@@ -62,17 +62,19 @@ def on_error(message):
 
 # either update other table, matching an entry with my ID, or if no
 # entries "available" in other table, insert into my table.
-def update_other_table_or_add_to_my_table(coords, other_table, my_table):
-        id = str(uuid.uuid4())
+def update_other_table_or_add_to_my_table(coords, user_id, other_table, my_table):
+        # TODO: handle repeat requests.
+        transaction_id = str(uuid.uuid4())
         # TODO: Instead of returning first option here, should try to do reasonable job of finding closest
         # counterpart.
-        first_choice = query_db("SELECT * FROM {} WHERE counterpart_id IS NULL".format(other_table), one=True)
+        first_choice = query_db("SELECT * FROM {} WHERE counterpart_user_id IS NULL".format(other_table), one=True)
+        found_match = first_choice != None
         db = get_db()
-        if first_choice != None:
-                other_id = first_choice[0]
+        if found_match:
+                other_user_id = first_choice[1]
                 # update <other_table> table.    
-                db.execute("UPDATE {} SET counterpart_id = ? WHERE id = ?".format(other_table),
-                           (id, other_id))
+                db.execute("UPDATE {} SET counterpart_user_id = ? WHERE user_id = ?".format(other_table),
+                           (user_id, other_user_id))
                 db.commit()
                 message = 'Successfully updated ' + other_table
                 flash(message)
@@ -80,11 +82,14 @@ def update_other_table_or_add_to_my_table(coords, other_table, my_table):
                 coords_dict = {"matched" : True,
                                "lat" : first_choice[1],
                                "lon" : first_choice[2]}
-                print "found counterpart with id: " + other_id
-                return json.dumps(coords_dict, ensure_ascii = False) 
+                print "found counterpart with id: " + str(other_user_id)
+                db.execute('insert into {} (transaction_id, user_id, lat, lon, timestamp, counterpart_user_id) values (?,?,?,?,?,?)'.format(my_table), [transaction_id, user_id, coords[0], coords[1], datetime.now(), other_user_id])
+                db.commit()
+                
+                return json.dumps(coords_dict, ensure_ascii = False)
         # add to <my_table> table.
-        db.execute('insert into {} (id, lat, lon, timestamp) values (?,?,?,?)'.format(my_table),                   
-                   [id, coords[0], coords[1], datetime.now()])
+        db.execute('insert into {} (transaction_id, user_id, lat, lon, timestamp) values (?,?,?,?,?)'.format(my_table),                   
+                   [transaction_id, user_id, coords[0], coords[1], datetime.now()])
         db.commit()
         message = 'Added entry to ' + my_table
         return on_error(message)        
@@ -99,7 +104,8 @@ def request_driver():
         coords = request.args.get('coords').split(',')
         if len(coords) != 2: 
                 return on_error('coords incorrectly formatted')
-        return update_other_table_or_add_to_my_table(coords, 'drivers', 'riders')
+        user_id = request.args.get('userid')
+        return update_other_table_or_add_to_my_table(coords, user_id, 'drivers', 'riders')
 
 @app.route("/noober/rider")
 def request_rider():
@@ -108,7 +114,8 @@ def request_rider():
         coords = request.args.get('coords').split(',')
         if len(coords) != 2:
                 return on_error('coords incorrectly formatted')
-        return update_other_table_or_add_to_my_table(coords, 'riders', 'drivers')        
+        user_id = request.args.get('userid')
+        return update_other_table_or_add_to_my_table(coords, user_id, 'riders', 'drivers')        
 
 @app.route("/noober/show_riders")
 def show_riders():
