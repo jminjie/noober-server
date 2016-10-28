@@ -55,14 +55,36 @@ def close_db(error):
 
 # call when returning error from request_driver or request_rider.
 # log an error, flash a message, return dict with "matched" = false.
+# todo: right now this is used for error and not matched. split
+# this into two separate methods.
 def on_error(message):
         print message
         flash(message)
         return json.dumps({"matched" : False}, ensure_ascii=False)
 
+# TODO: define db row converter to get dict syntax, so updating indices isnt a pain.
+
 # either update other table, matching an entry with my ID, or if no
 # entries "available" in other table, insert into my table.
+# TODO: this comment out of date, update.
 def update_other_table_or_add_to_my_table(coords, user_id, other_table, my_table):
+        # first check if this is a repeat request, that is, user_id already exists in
+        # my_table.  If so, just return the current status of the row.
+        existing_row = query_db("SELECT * FROM {} WHERE user_id = ?".format(my_table),(user_id,), one=True)
+        if existing_row != None:
+                # either it's still unmatched, or it's matched now.
+                counterpart_user_id = existing_row[5]
+                if counterpart_user_id == None:
+                        return on_error("Still not matched")
+                else:
+                        counterpart_row = query_db("SELECT * FROM {} where user_id = ?".format(other_table),(counterpart_user_id,), one=True)
+                        if counterpart_row == None:
+                                return on_error("Internal error, had counterpart id with no corresponding entry in other table")
+                        coords_dict = {"matched" : True,
+                                       "lat" : counterpart_row[2],
+                                       "lon" : counterpart_row[3]}
+                        return json.dumps(coords_dict, ensure_ascii = False)
+        # otherwise, this is a new driver/rider and the db state needs to be updated.
         transaction_id = str(uuid.uuid4())
         # TODO: Instead of returning first option here, should try to do reasonable job of finding closest
         # counterpart.
@@ -79,8 +101,8 @@ def update_other_table_or_add_to_my_table(coords, user_id, other_table, my_table
                 flash(message)
                 # return coordinates of counterpart.
                 coords_dict = {"matched" : True,
-                               "lat" : first_choice[1],
-                               "lon" : first_choice[2]}
+                               "lat" : first_choice[2],
+                               "lon" : first_choice[3]}
                 print "found counterpart with id: " + str(other_user_id)
                 db.execute('insert into {} (transaction_id, user_id, lat, lon, timestamp, counterpart_user_id) values (?,?,?,?,?,?)'.format(my_table), [transaction_id, user_id, coords[0], coords[1], datetime.now(), other_user_id])
                 db.commit()
