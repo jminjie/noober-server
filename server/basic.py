@@ -63,7 +63,6 @@ def on_error(message):
 # either update other table, matching an entry with my ID, or if no
 # entries "available" in other table, insert into my table.
 def update_other_table_or_add_to_my_table(coords, user_id, other_table, my_table):
-        # TODO: handle repeat requests.
         transaction_id = str(uuid.uuid4())
         # TODO: Instead of returning first option here, should try to do reasonable job of finding closest
         # counterpart.
@@ -115,7 +114,25 @@ def request_rider():
         if len(coords) != 2:
                 return on_error('coords incorrectly formatted')
         user_id = request.args.get('userid')
-        return update_other_table_or_add_to_my_table(coords, user_id, 'riders', 'drivers')        
+        return update_other_table_or_add_to_my_table(coords, user_id, 'riders', 'drivers')
+
+# if user submits cancel, remove all entries from drivers/riders table with that user id,
+# and unmatch all requests which have same counterpart_user_id.
+@app.route("/noober/cancel")
+def cancel():
+        if "userid" not in request.args:
+                return on_error('Missing userid query param from cancel request')
+        user_id = request.args.get('userid')        
+        db = get_db()
+        db.execute('DELETE FROM riders WHERE user_id = ?',(user_id,))
+        db.execute('DELETE FROM drivers WHERE user_id = ?',(user_id,))        
+        db.execute("UPDATE drivers SET counterpart_user_id = null WHERE counterpart_user_id = ?",
+                   (user_id, ))
+        db.execute("UPDATE riders SET counterpart_user_id = null WHERE counterpart_user_id = ?",
+                   (user_id, ))                
+        db.commit()
+        return json.dumps({"matched" : False}, ensure_ascii=False)
+        
 
 @app.route("/noober/show_riders")
 def show_riders():
