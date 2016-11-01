@@ -7,9 +7,9 @@ from datetime import datetime, date
 from dbutil import *
 from globals import *
 
-
 app = Flask(__name__)
 app.config.from_object(__name__)
+
 
 # load default config and override config from an environment variable
 app.config.update(dict(
