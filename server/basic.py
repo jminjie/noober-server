@@ -5,6 +5,8 @@ import sqlite3
 from flask import Flask, request, session, g, redirect, url_for, abort, render_template, flash
 from datetime import datetime, date
 from dbutil import *
+from globals import *
+
 
 app = Flask(__name__)
 app.config.from_object(__name__)
@@ -22,19 +24,6 @@ app.config.from_envvar('BASIC_SETTINGS', silent=True)
 def on_error(message):
         print message
         return json.dumps({"matched" : False}, ensure_ascii=False)
-
-RIDER_REQUESTING_DRIVER = 100
-RIDER_WAITING_FOR_MATCH = 101
-RIDER_WAITING_FOR_PICKUP = 102
-RIDER_WAITING_FOR_DROPOFF = 103
-RIDER_CANCEL = 104
-
-DRIVER_REQUESTING_RIDER = 200
-DRIVER_WAITING_FOR_MATCH = 201
-DRIVER_WAITING_TO_PICKUP = 202
-DRIVER_PICKED_UP_RIDER = 203
-DRIVER_CANCEL = 204
-DRIVER_DROPPED_OFF = 205
 
 class InputError(Exception):
         def __init__(self, message):
