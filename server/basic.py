@@ -1,11 +1,10 @@
 import os
 import json
 import sqlite3
-import uuid
 
 from flask import Flask, request, session, g, redirect, url_for, abort, render_template, flash
 from datetime import datetime, date
-# from flask.ext.api import status
+from dbutil import *
 
 app = Flask(__name__)
 app.config.from_object(__name__)
@@ -18,29 +17,208 @@ app.config.update(dict(
         PASSWORD='defualt'))
 app.config.from_envvar('BASIC_SETTINGS', silent=True)
 
-def connect_db():
-        rv = sqlite3.connect(app.config['DATABASE'])
-        rv.row_factory = sqlite3.Row
-        return rv
+# call when returning error from request_driver or request_rider.
+# log an error, flash a message, return dict with "matched" = false.
+def on_error(message):
+        print message
+        return json.dumps({"matched" : False}, ensure_ascii=False)
 
-def get_db():
-        """Opens a new database connection if there is none yet for the current application context.
-        """
-        if not hasattr(g, 'sqlite_db'):
-                g.sqlite_db = connect_db()
-        return g.sqlite_db
+RIDER_REQUESTING_DRIVER = 100
+RIDER_WAITING_FOR_MATCH = 101
+RIDER_WAITING_FOR_PICKUP = 102
+RIDER_WAITING_FOR_DROPOFF = 103
+RIDER_CANCEL = 104
 
-def query_db(query, args=(), one=False):
-        cur = get_db().execute(query,args)
-        rv = cur.fetchall()
-        cur.close()
-        return (rv[0] if rv else None) if one else rv
-        
-def init_db():
+DRIVER_REQUESTING_RIDER = 200
+DRIVER_WAITING_FOR_MATCH = 201
+DRIVER_WAITING_TO_PICKUP = 202
+DRIVER_PICKED_UP_RIDER = 203
+DRIVER_CANCEL = 204
+DRIVER_DROPPED_OFF = 205
+
+class InputError(Exception):
+        def __init__(self, message):
+                self.message = message
+
+class InternalError(Exception):
+        def __init__(self, message):
+                self.message = message
+
+def parse_app_request(request):
+        user_id = request.args.get('user_id')
+        if user_id == '':
+                raise InputError('Missing userid, required field.')
+        request_type = request.args.get('request_type')
+        if request_type == '':
+                raise InputError('Missing request_type, required field.')
+        try: 
+                request_type = int(request_type)
+        except TypeError:
+                raise InputError('Request type not parseable as an integer')
+        ret = {'user_id': user_id,
+               'request_type': request_type}
+        # If coords are passed, make sure they're properly formatted.
+        if 'lat' in request.args:
+                try:
+                        ret['lat'] =  float(request.args.get('lat'))
+                except TypeError:
+                        raise InputError('Latitude not parseable as a float.')
+        if 'lon' in request.args:
+                try:
+                        ret['lon'] =  float(request.args.get('lat'))
+                except TypeError:
+                        raise InputError('Longitude not parseable as a float.')                        
+        return ret
+
+@app.route("/noober/rider_app")
+def handle_rider_app_request():
+        try:
+                rider_request = parse_app_request(request)
+        except InputError as err:
+                return on_error(err.message)
+        if rider_request['request_type'] == RIDER_REQUESTING_DRIVER:
+                return handle_rider_requesting_driver(rider_request)
+        if rider_request['request_type'] == RIDER_WAITING_FOR_MATCH:
+                return handle_rider_waiting_for_match(rider_request)
+        # Implement rest of methods.
+        return on_error("blah")
+
+@app.route("/noober/driver_app")
+def handle_driver_app_request():
+        try:
+                driver_request = parse_app_request(request)
+        except InputError as err:
+                return on_error(err.message)
+        if driver_request['request_type'] == DRIVER_REQUESTING_RIDER:
+                return handle_driver_requesting_rider(driver_request)
+        if driver_request['request_type'] == DRIVER_WAITING_FOR_MATCH:
+                return handle_driver_waiting_for_match(driver_request)
+        # Implement rest of methods.
+        return on_error("blah")
+
+def handle_rider_requesting_driver(rider_request):
+        # TODO: Instead of returning first option here, should try to do reasonable job of finding closest
+        # counterpart.
+        driver_match = query_db("SELECT * FROM drivers WHERE matched_rider_id IS NULL", one=True)
+        found_match = driver_match != None
         db = get_db()
-        with app.open_resource('schema.sql', mode='r') as f:
-                db.cursor().executescript(f.read())
+        if found_match:
+                driver_user_id = driver_match[0]
+                db.execute("UPDATE drivers SET matched_rider_id = ? WHERE user_id = ?",
+                           (rider_request["user_id"], driver_user_id))
+                db.commit()
+                # return coordinates of matched driver.
+                success_response = {"matched" : True,
+                                    "lat" : driver_match[1],
+                                    "lon" : driver_match[2]}
+                print "matched with driver with id: " + str(driver_user_id)
+                db.execute('insert into riders (user_id, lat, lon, timestamp, matched_driver_id) values (?,?,?,?,?)',
+                           [rider_request["user_id"],
+                            rider_request["lat"],
+                            rider_request["lon"],
+                            datetime.now(),
+                            driver_user_id])
+                db.commit()
+                
+                return json.dumps(success_response, ensure_ascii = False)
+        # add to riders table.
+        db.execute('insert into riders (user_id, lat, lon, timestamp) values (?,?,?,?)',                   
+                   [rider_request["user_id"],
+                    rider_request["lat"],
+                    rider_request["lon"],
+                    datetime.now()])
         db.commit()
+        message = 'Added entry to riders'
+        return json.dumps({"matched": False})
+
+def handle_driver_requesting_rider(driver_request):
+        # TODO: Instead of returning first option here, should try to do reasonable job of finding closest
+        # counterpart.
+        rider_match = query_db("SELECT * FROM riders WHERE matched_driver_id IS NULL", one=True)
+        found_match = rider_match != None
+        db = get_db()
+        if found_match:
+                rider_user_id = rider_match[0]
+                db.execute("UPDATE riders SET matched_driver_id = ? WHERE user_id = ?",
+                           (driver_request["user_id"], rider_user_id))
+                db.commit()
+                # return coordinates of matched rider.
+                success_response = {"matched" : True,
+                                    "lat" : rider_match[1],
+                                    "lon" : rider_match[2]}
+                print "matchd with rider with id: " + str(rider_user_id)
+                db.execute('insert into drivers (user_id, lat, lon, timestamp, matched_rider_id) values (?,?,?,?,?)',
+                           [driver_request["user_id"],
+                            driver_request["lat"],
+                            driver_request["lon"],
+                            datetime.now(),
+                            rider_user_id])
+                db.commit()
+                
+                return json.dumps(success_response, ensure_ascii = False)
+        # add to drivers table.
+        db.execute('insert into drivers (user_id, lat, lon, timestamp) values (?,?,?,?)',                   
+                   [driver_request["user_id"],
+                    driver_request["lat"],
+                    driver_request["lon"],
+                    datetime.now()])
+        db.commit()
+        message = 'Added entry to drivers'
+        return json.dumps({"matched": False})
+
+def handle_rider_waiting_for_match(rider_request):
+        existing_row = query_db("SELECT * FROM riders WHERE user_id = ?",
+                                (rider_request['user_id'],), one=True)
+        if existing_row == None:
+                raise InternalError("Rider sent waiting for match request, but is not in db")
+        
+        # either it's still unmatched, or it's matched now.
+        matched_driver_id = existing_row[4]
+        if matched_driver_id == None:
+                return json.dumps({"matched": False})
+        else:
+                matched_driver = query_db("SELECT * FROM drivers where user_id = ?",
+                                         (matched_driver_id,), one=True)
+                if matched_driver == None:
+                        raise InternalError(
+                                "Driver had matched_rider_id with no corresponding entry in other table")
+                success_response = {"matched" : True,
+                                    "lat" : matched_driver[1],
+                                    "lon" : matched_driver[2]}
+                return json.dumps(success_response, ensure_ascii = False)        
+
+
+def handle_driver_waiting_for_match(driver_request):
+        existing_row = query_db("SELECT * FROM drivers WHERE user_id = ?",
+                                (driver_request['user_id'],), one=True)
+        if existing_row == None:
+                raise InternalError("Driver sent waiting for match request, but is not in db")
+        
+        # either it's still unmatched, or it's matched now.
+        matched_rider_id = existing_row[4]
+        if matched_rider_id == None:
+                return json.dumps({"matched": False})
+        else:
+                matched_rider = query_db("SELECT * FROM riders where user_id = ?",
+                                         (matched_rider_id,), one=True)
+                if matched_rider == None:
+                        raise InternalError(
+                                "Rider had matched_driver_id with no corresponding entry in other table")
+                success_response = {"matched" : True,
+                                    "lat" : matched_rider[1],
+                                    "lon" : matched_rider[2]}
+                return json.dumps(success_response, ensure_ascii = False)        
+
+
+@app.route("/noober/show_riders")
+def show_riders():
+        riders = query_db('select * from riders')
+        return render_template('show_entries.html', entries=riders)
+
+@app.route("/noober/show_drivers")
+def show_drivers():
+        drivers = query_db('select * from drivers')
+        return render_template('show_entries.html', entries=drivers)
 
 @app.cli.command('initdb')
 def initdb_command():
@@ -52,119 +230,6 @@ def close_db(error):
         """Closes the database again at the end of the request."""
         if hasattr(g, 'sqlite_db'):
                 g.sqlite_db.close()
-
-# call when returning error from request_driver or request_rider.
-# log an error, flash a message, return dict with "matched" = false.
-# todo: right now this is used for error and not matched. split
-# this into two separate methods.
-def on_error(message):
-        print message
-        flash(message)
-        return json.dumps({"matched" : False}, ensure_ascii=False)
-
-# TODO: define db row converter to get dict syntax, so updating indices isnt a pain.
-
-# either update other table, matching an entry with my ID, or if no
-# entries "available" in other table, insert into my table.
-# TODO: this comment out of date, update.
-def update_other_table_or_add_to_my_table(coords, user_id, other_table, my_table):
-        # first check if this is a repeat request, that is, user_id already exists in
-        # my_table.  If so, just return the current status of the row.
-        existing_row = query_db("SELECT * FROM {} WHERE user_id = ?".format(my_table),(user_id,), one=True)
-        if existing_row != None:
-                # either it's still unmatched, or it's matched now.
-                counterpart_user_id = existing_row[5]
-                if counterpart_user_id == None:
-                        return on_error("Still not matched")
-                else:
-                        counterpart_row = query_db("SELECT * FROM {} where user_id = ?".format(other_table),(counterpart_user_id,), one=True)
-                        if counterpart_row == None:
-                                return on_error("Internal error, had counterpart id with no corresponding entry in other table")
-                        coords_dict = {"matched" : True,
-                                       "lat" : counterpart_row[2],
-                                       "lon" : counterpart_row[3]}
-                        return json.dumps(coords_dict, ensure_ascii = False)
-        # otherwise, this is a new driver/rider and the db state needs to be updated.
-        transaction_id = str(uuid.uuid4())
-        # TODO: Instead of returning first option here, should try to do reasonable job of finding closest
-        # counterpart.
-        first_choice = query_db("SELECT * FROM {} WHERE counterpart_user_id IS NULL".format(other_table), one=True)
-        found_match = first_choice != None
-        db = get_db()
-        if found_match:
-                other_user_id = first_choice[1]
-                # update <other_table> table.    
-                db.execute("UPDATE {} SET counterpart_user_id = ? WHERE user_id = ?".format(other_table),
-                           (user_id, other_user_id))
-                db.commit()
-                message = 'Successfully updated ' + other_table
-                flash(message)
-                # return coordinates of counterpart.
-                coords_dict = {"matched" : True,
-                               "lat" : first_choice[2],
-                               "lon" : first_choice[3]}
-                print "found counterpart with id: " + str(other_user_id)
-                db.execute('insert into {} (transaction_id, user_id, lat, lon, timestamp, counterpart_user_id) values (?,?,?,?,?,?)'.format(my_table), [transaction_id, user_id, coords[0], coords[1], datetime.now(), other_user_id])
-                db.commit()
-                
-                return json.dumps(coords_dict, ensure_ascii = False)
-        # add to <my_table> table.
-        db.execute('insert into {} (transaction_id, user_id, lat, lon, timestamp) values (?,?,?,?,?)'.format(my_table),                   
-                   [transaction_id, user_id, coords[0], coords[1], datetime.now()])
-        db.commit()
-        message = 'Added entry to ' + my_table
-        return on_error(message)        
-
-# when rider requests a driver, check drivers table to see if any drivers
-# available.  if so, return that driver. otherwise, let rider know they've
-# been added to waiting queue.
-@app.route("/noober/driver")
-def request_driver():
-        if "coords" not in request.args:
-                return on_error('Missing coords query param')
-        coords = request.args.get('coords').split(',')
-        if len(coords) != 2: 
-                return on_error('coords incorrectly formatted')
-        user_id = request.args.get('userid')
-        return update_other_table_or_add_to_my_table(coords, user_id, 'drivers', 'riders')
-
-@app.route("/noober/rider")
-def request_rider():
-        if "coords" not in request.args:
-                return on_error('Missing coords query param')
-        coords = request.args.get('coords').split(',')
-        if len(coords) != 2:
-                return on_error('coords incorrectly formatted')
-        user_id = request.args.get('userid')
-        return update_other_table_or_add_to_my_table(coords, user_id, 'riders', 'drivers')
-
-# if user submits cancel, remove all entries from drivers/riders table with that user id,
-# and unmatch all requests which have same counterpart_user_id.
-@app.route("/noober/cancel")
-def cancel():
-        if "userid" not in request.args:
-                return on_error('Missing userid query param from cancel request')
-        user_id = request.args.get('userid')        
-        db = get_db()
-        db.execute('DELETE FROM riders WHERE user_id = ?',(user_id,))
-        db.execute('DELETE FROM drivers WHERE user_id = ?',(user_id,))        
-        db.execute("UPDATE drivers SET counterpart_user_id = null WHERE counterpart_user_id = ?",
-                   (user_id, ))
-        db.execute("UPDATE riders SET counterpart_user_id = null WHERE counterpart_user_id = ?",
-                   (user_id, ))                
-        db.commit()
-        return json.dumps({"matched" : False}, ensure_ascii=False)
-        
-
-@app.route("/noober/show_riders")
-def show_riders():
-        riders = query_db('select * from riders')
-        return render_template('show_entries.html', entries=riders)
-
-@app.route("/noober/show_drivers")
-def show_drivers():
-        drivers = query_db('select * from drivers')
-        return render_template('show_entries.html', entries=drivers)
 
         
 if __name__ == "__main__":
