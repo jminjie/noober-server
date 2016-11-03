@@ -54,7 +54,7 @@ def parse_app_request(request):
                         raise InputError('Latitude not parseable as a float.')
         if 'lon' in request.args:
                 try:
-                        ret['lon'] =  float(request.args.get('lat'))
+                        ret['lon'] =  float(request.args.get('lon'))
                 except TypeError:
                         raise InputError('Longitude not parseable as a float.')                        
         return ret
@@ -117,7 +117,6 @@ def handle_rider_requesting_driver(rider_request):
                     rider_request["lon"],
                     datetime.now()])
         db.commit()
-        message = 'Added entry to riders'
         return json.dumps({"matched": False})
 
 def handle_driver_requesting_rider(driver_request):
@@ -135,7 +134,7 @@ def handle_driver_requesting_rider(driver_request):
                 success_response = {"matched" : True,
                                     "lat" : rider_match[1],
                                     "lon" : rider_match[2]}
-                print "matchd with rider with id: " + str(rider_user_id)
+                print "matched with rider with id: " + str(rider_user_id)
                 db.execute('insert into drivers (user_id, lat, lon, timestamp, matched_rider_id) values (?,?,?,?,?)',
                            [driver_request["user_id"],
                             driver_request["lat"],

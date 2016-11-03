@@ -34,11 +34,27 @@ class BasicTestCase(unittest.TestCase):
         assert len(response.keys()) == 1
         assert response["matched"] == False
 
+        # now send matching request, expect response of with matched set to true
+        # and lat,lon of previous rider.
+        rv = self.send_driver_app_request(1, DRIVER_REQUESTING_RIDER ,123.1, 234.1)
+        response = json.loads(rv.data)
+        assert response == {"matched": True,
+                           "lat": 123,
+                           "lon": 234}
+
     def test_driver_request_rider_when_no_riders(self):
         rv = self.send_driver_app_request(1, DRIVER_REQUESTING_RIDER ,123,234)
         response = json.loads(rv.data)
         assert len(response.keys()) == 1
         assert response["matched"] == False
+
+        # now send matching request, expect response of with matched set to true
+        # and lat,lon of previous driver.
+        rv = self.send_rider_app_request(1, RIDER_REQUESTING_DRIVER ,123.1, 234.1)
+        response = json.loads(rv.data)
+        assert response == {"matched": True,
+                           "lat": 123,
+                           "lon": 234}        
         
 if __name__ == '__main__':
     unittest.main()
