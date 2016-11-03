@@ -107,8 +107,9 @@ def handle_rider_app_request():
                 return handle_rider_waiting_for_match(rider_request)
         elif rider_request['request_type'] == RIDER_WAITING_FOR_PICKUP:
                 return handle_rider_waiting_for_pickup(rider_request)
-        else:
-                raise InternalError("incorrect attribute specified")                        
+        elif rider_request['request_type'] == RIDER_GET_STATUS:
+                return handle_rider_get_status(rider_request)        
+        raise InternalError("incorrect attribute specified")                        
         # Implement rest of methods.
 
 @app.route("/noober/driver_app")
@@ -124,7 +125,11 @@ def handle_driver_app_request():
         elif driver_request['request_type'] == DRIVER_DRIVING_TO_PICKUP:
                 return handle_driver_driving_to_pickup(driver_request)
         elif driver_request['request_type'] == DRIVER_PICKED_UP_RIDER:
-                return handle_driver_picked_up_rider(driver_request)        
+                return handle_driver_picked_up_rider(driver_request)
+        elif driver_request['request_type'] == DRIVER_DROPPED_OFF:
+                return handle_driver_dropped_off(driver_request)
+        elif driver_request['request_type'] == DRIVER_GET_STATUS:
+                return handle_driver_get_status(driver_request)                
         # Implement rest of methods.
         return on_error("blah")
 
@@ -197,7 +202,17 @@ def handle_rider_waiting_for_pickup(rider_request):
                 picked_up = 0
         return json.dumps({"cancelled": False,
                            "picked_up": picked_up})
-        
+
+def handle_rider_get_status(rider_request):
+        existing_row = query_db("SELECT * FROM riders WHERE user_id = ?",
+                                (rider_request['user_id'],), one=True)
+        if existing_row == None:
+                raise InternalError("Rider sent get status request, but is not in db")
+        print "existing row: ", existing_row
+        return json.dumps({"lat": get_attr_from_rider_row(existing_row, "lat"),
+                           "lon": get_attr_from_rider_row(existing_row, "lon"),
+                           "matched_driver_id": get_attr_from_rider_row(existing_row, "matched_driver_id"),
+                           "picked_up": get_attr_from_rider_row(existing_row, "picked_up")})
 
 def handle_driver_requesting_rider(driver_request):
         # TODO: Instead of returning first option here, should try to do reasonable job of finding closest
@@ -283,6 +298,37 @@ def handle_driver_picked_up_rider(driver_request):
                    (matched_rider_id, ))
         db.commit()
         return json.dumps({})
+
+# unmatch both driver and rider.
+def handle_driver_dropped_off(driver_request):
+        driver_id = driver_request['user_id']
+        existing_row = query_db("SELECT * FROM drivers WHERE user_id = ?",
+                                (driver_id, ), one=True)
+        if existing_row == None:
+                raise InternalError("Driver sent dropped off request, but is not in db")
+        db = get_db()
+        db.execute("UPDATE drivers SET matched_rider_id = NULL, rider_in_car = 0 WHERE  user_id = ?",
+                   (driver_id, ))
+        db.commit()
+        # update corresponding row in riders table.
+        matched_rider_id = get_attr_from_driver_row(existing_row, "matched_rider_id")        
+        if matched_rider_id == None:
+                raise InputError("Driver app sent DRIVER_PICKED_UP_RIDER request, but is not matched to any rider")
+        db.execute("UPDATE riders SET matched_driver_id = NULL, picked_up = 0 WHERE user_id = ?",
+                   (matched_rider_id, ))
+        db.commit()        
+        return json.dumps({})
+
+def handle_driver_get_status(driver_request):
+        existing_row = query_db("SELECT * FROM drivers WHERE user_id = ?",
+                                (driver_request['user_id'],), one=True)
+        if existing_row == None:
+                raise InternalError("Driver sent get status request, but is not in db")
+        print "existing row: ", existing_row
+        return json.dumps({"lat": get_attr_from_driver_row(existing_row, "lat"),
+                           "lon": get_attr_from_driver_row(existing_row, "lon"),
+                           "matched_rider_id": get_attr_from_driver_row(existing_row, "matched_rider_id"),
+                           "rider_in_car": get_attr_from_driver_row(existing_row, "rider_in_car")})
 
 @app.route("/noober/show_riders")
 def show_riders():

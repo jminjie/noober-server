@@ -60,13 +60,28 @@ class BasicTestCase(unittest.TestCase):
         assert response == {"cancelled": False,
                             "picked_up": False}        
 
+        # driver picks up rider.
         self.send_driver_app_request(2, DRIVER_PICKED_UP_RIDER)
 
         # now rider should be picked up.
         rv = self.send_rider_app_request(1, RIDER_WAITING_FOR_PICKUP)
         response = json.loads(rv.data)
         assert response == {"cancelled": False,
-                            "picked_up": True}        
+                            "picked_up": True}
+
+        # driver drops off rider
+        self.send_driver_app_request(2, DRIVER_DROPPED_OFF)
+
+        # check rider and driver statuses
+        rv = self.send_rider_app_request(1, RIDER_GET_STATUS)
+        response = json.loads(rv.data)
+        assert response["matched_driver_id"] == None
+        assert response["picked_up"] == False
+
+        rv = self.send_driver_app_request(2, DRIVER_GET_STATUS)
+        response = json.loads(rv.data)
+        assert response["matched_rider_id"] == None
+        assert response["rider_in_car"] == False        
 
     def test_driver_request_rider_when_no_riders(self):
         rv = self.send_driver_app_request(2, DRIVER_REQUESTING_RIDER ,123,234)
