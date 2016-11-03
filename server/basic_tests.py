@@ -42,6 +42,11 @@ class BasicTestCase(unittest.TestCase):
                            "lat": 123,
                            "lon": 234}
 
+        rv = self.send_driver_app_request(1, DRIVER_DRIVING_TO_PICKUP ,123.2, 234.2)
+        response = json.loads(rv.data)
+        print response
+        assert response == {"cancelled": False}        
+
     def test_driver_request_rider_when_no_riders(self):
         rv = self.send_driver_app_request(1, DRIVER_REQUESTING_RIDER ,123,234)
         response = json.loads(rv.data)

@@ -67,7 +67,7 @@ def handle_rider_app_request():
                 return on_error(err.message)
         if rider_request['request_type'] == RIDER_REQUESTING_DRIVER:
                 return handle_rider_requesting_driver(rider_request)
-        if rider_request['request_type'] == RIDER_WAITING_FOR_MATCH:
+        elif rider_request['request_type'] == RIDER_WAITING_FOR_MATCH:
                 return handle_rider_waiting_for_match(rider_request)
         # Implement rest of methods.
         return on_error("blah")
@@ -80,8 +80,10 @@ def handle_driver_app_request():
                 return on_error(err.message)
         if driver_request['request_type'] == DRIVER_REQUESTING_RIDER:
                 return handle_driver_requesting_rider(driver_request)
-        if driver_request['request_type'] == DRIVER_WAITING_FOR_MATCH:
+        elif driver_request['request_type'] == DRIVER_WAITING_FOR_MATCH:
                 return handle_driver_waiting_for_match(driver_request)
+        elif driver_request['request_type'] == DRIVER_DRIVING_TO_PICKUP:
+                return handle_driver_driving_to_pickup(driver_request)
         # Implement rest of methods.
         return on_error("blah")
 
@@ -195,8 +197,17 @@ def handle_driver_waiting_for_match(driver_request):
                 success_response = {"matched" : True,
                                     "lat" : matched_rider[1],
                                     "lon" : matched_rider[2]}
-                return json.dumps(success_response, ensure_ascii = False)        
+                return json.dumps(success_response, ensure_ascii = False)
 
+# todo: maybe this should also update driver location in DB?
+# for now, this will just check if rider has cancelled by checking if it's still matched in db.
+def handle_driver_driving_to_pickup(driver_request):
+        existing_row = query_db("SELECT * FROM drivers WHERE user_id = ?",
+                                (driver_request['user_id'],), one=True)
+        if existing_row == None:
+                raise InternalError("Driver sent waiting for match request, but is not in db")
+        matched = existing_row[4]
+        return json.dumps({"cancelled": not matched})
 
 @app.route("/noober/show_riders")
 def show_riders():
