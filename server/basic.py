@@ -89,9 +89,11 @@ def get_attr_from_driver_row(row, attribute):
                 return row[4]
         elif attribute == "rider_in_car":
                 return row[5]
+        elif attribute == "matched_rider_id":
+                return row[4]
         else:
-                raise InternalError("incorrect attribute specified")        
-        
+                raise InternalError("incorrect attribute specified")
+        # Implement rest of methods.        
 
 @app.route("/noober/rider_app")
 def handle_rider_app_request():
@@ -104,9 +106,10 @@ def handle_rider_app_request():
         elif rider_request['request_type'] == RIDER_WAITING_FOR_MATCH:
                 return handle_rider_waiting_for_match(rider_request)
         elif rider_request['request_type'] == RIDER_WAITING_FOR_PICKUP:
-                return handle_rider_waiting_for_pickup(rider_request)        
+                return handle_rider_waiting_for_pickup(rider_request)
+        else:
+                raise InternalError("incorrect attribute specified")                        
         # Implement rest of methods.
-        return on_error("blah")
 
 @app.route("/noober/driver_app")
 def handle_driver_app_request():
