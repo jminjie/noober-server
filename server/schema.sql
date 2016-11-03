@@ -6,7 +6,8 @@ create table riders (
   lat float(10,6) not null,
   lon float(10,6) not null,
   timestamp string,
-  matched_driver_id string
+  matched_driver_id string,
+  picked_up integer
 );
 
 create table drivers (
@@ -14,6 +15,7 @@ create table drivers (
   lat float(10,6) not null,
   lon float(10,6) not null,
   timestamp string,
-  matched_rider_id string
+  matched_rider_id string,
+  rider_in_car integer
 );
 
