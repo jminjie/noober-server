@@ -36,15 +36,15 @@ def parse_app_request(request):
         user_id = request.args.get('user_id')
         if user_id == '':
                 raise InputError('Missing user_id, required field.')
-        request_type = request.args.get('request_type')
-        if request_type == '':
-                raise InputError('Missing request_type, required field.')
+        type = request.args.get('type')
+        if type == '':
+                raise InputError('Missing type, required field.')
         try: 
-                request_type = int(request_type)
+                type = int(type)
         except TypeError:
                 raise InputError('Request type not parseable as an integer')
         ret = {'user_id': user_id,
-               'request_type': request_type}
+               'type': type}
         # If coords are passed, make sure they're properly formatted.
         if 'lat' in request.args:
                 try:
@@ -101,13 +101,13 @@ def handle_rider_app_request():
                 rider_request = parse_app_request(request)
         except InputError as err:
                 return on_error(err.message)
-        if rider_request['request_type'] == RIDER_REQUESTING_DRIVER:
+        if rider_request['type'] == RIDER_REQUESTING_DRIVER:
                 return handle_rider_requesting_driver(rider_request)
-        elif rider_request['request_type'] == RIDER_WAITING_FOR_MATCH:
+        elif rider_request['type'] == RIDER_WAITING_FOR_MATCH:
                 return handle_rider_waiting_for_match(rider_request)
-        elif rider_request['request_type'] == RIDER_WAITING_FOR_PICKUP:
+        elif rider_request['type'] == RIDER_WAITING_FOR_PICKUP:
                 return handle_rider_waiting_for_pickup(rider_request)
-        elif rider_request['request_type'] == RIDER_GET_STATUS:
+        elif rider_request['type'] == RIDER_GET_STATUS:
                 return handle_rider_get_status(rider_request)        
         raise InternalError("incorrect attribute specified")                        
         # Implement rest of methods.
@@ -118,17 +118,17 @@ def handle_driver_app_request():
                 driver_request = parse_app_request(request)
         except InputError as err:
                 return on_error(err.message)
-        if driver_request['request_type'] == DRIVER_REQUESTING_RIDER:
+        if driver_request['type'] == DRIVER_REQUESTING_RIDER:
                 return handle_driver_requesting_rider(driver_request)
-        elif driver_request['request_type'] == DRIVER_WAITING_FOR_MATCH:
+        elif driver_request['type'] == DRIVER_WAITING_FOR_MATCH:
                 return handle_driver_waiting_for_match(driver_request)
-        elif driver_request['request_type'] == DRIVER_DRIVING_TO_PICKUP:
+        elif driver_request['type'] == DRIVER_DRIVING_TO_PICKUP:
                 return handle_driver_driving_to_pickup(driver_request)
-        elif driver_request['request_type'] == DRIVER_PICKED_UP_RIDER:
+        elif driver_request['type'] == DRIVER_PICKED_UP_RIDER:
                 return handle_driver_picked_up_rider(driver_request)
-        elif driver_request['request_type'] == DRIVER_DROPPED_OFF:
+        elif driver_request['type'] == DRIVER_DROPPED_OFF:
                 return handle_driver_dropped_off(driver_request)
-        elif driver_request['request_type'] == DRIVER_GET_STATUS:
+        elif driver_request['type'] == DRIVER_GET_STATUS:
                 return handle_driver_get_status(driver_request)                
         # Implement rest of methods.
         return on_error("blah")

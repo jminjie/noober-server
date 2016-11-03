@@ -18,18 +18,18 @@ class BasicTestCase(unittest.TestCase):
         os.close(self.db_fd)
         os.unlink(basic.app.config['DATABASE'])
 
-    def send_rider_app_request(self, user_id, request_type, lat=None, lon=None):
-        url = '/noober/rider_app?user_id={}&request_type={}'.format(
-        user_id, request_type)
+    def send_rider_app_request(self, user_id, type, lat=None, lon=None):
+        url = '/noober/rider_app?user_id={}&type={}'.format(
+        user_id, type)
         if lat != None:
             url+='&lat={}'.format(lat)
         if lon != None:
             url+='&lon={}'.format(lon)
         return self.app.get(url)
 
-    def send_driver_app_request(self, user_id, request_type, lat=None, lon=None):
-        url = '/noober/driver_app?user_id={}&request_type={}'.format(
-        user_id, request_type)
+    def send_driver_app_request(self, user_id, type, lat=None, lon=None):
+        url = '/noober/driver_app?user_id={}&type={}'.format(
+        user_id, type)
         if lat != None:
             url+='&lat={}'.format(lat)
         if lon != None:
