@@ -83,7 +83,7 @@ class BasicTestCase(unittest.TestCase):
         assert response["matched_rider_id"] == None
         assert response["rider_in_car"] == False        
 
-    def test_driver_request_rider_when_no_riders(self):
+    def test_rider_cancel_while_waiting_for_pickup(self):
         rv = self.send_driver_app_request(2, DRIVER_REQUESTING_RIDER ,123,234)
         response = json.loads(rv.data)
         assert len(response.keys()) == 1
@@ -95,7 +95,18 @@ class BasicTestCase(unittest.TestCase):
         response = json.loads(rv.data)
         assert response == {"matched": True,
                            "lat": 123,
-                           "lon": 234}        
+                           "lon": 234}
+
+        rv = self.send_rider_app_request(1, RIDER_CANCEL)
+
+        # check driver status to see if they are unmatched
+        # TODO: need to be able to check that rider was deleted from DB also.
+        # consider modifying get status request to make this possible or
+        # see if there's way to inspect db directly.
+        rv = self.send_driver_app_request(2, DRIVER_GET_STATUS)
+        response = json.loads(rv.data)
+        assert response["matched_rider_id"] == None
+        assert response["rider_in_car"] == None        
         
 if __name__ == '__main__':
     unittest.main()

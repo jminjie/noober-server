@@ -95,6 +95,9 @@ def get_attr_from_driver_row(row, attribute):
                 raise InternalError("incorrect attribute specified")
         # Implement rest of methods.        
 
+
+# TODO: We can validate what state rider/driver are in when request comes in
+# by querying database.  Not sure if this is necessary, but it would be safer.
 @app.route("/noober/rider_app")
 def handle_rider_app_request():
         try:
@@ -107,6 +110,8 @@ def handle_rider_app_request():
                 return handle_rider_waiting_for_match(rider_request)
         elif rider_request['type'] == RIDER_WAITING_FOR_PICKUP:
                 return handle_rider_waiting_for_pickup(rider_request)
+        elif rider_request['type'] == RIDER_CANCEL:
+                return handle_rider_cancel(rider_request)
         elif rider_request['type'] == RIDER_GET_STATUS:
                 return handle_rider_get_status(rider_request)        
         raise InternalError("incorrect attribute specified")                        
@@ -128,6 +133,10 @@ def handle_driver_app_request():
                 return handle_driver_picked_up_rider(driver_request)
         elif driver_request['type'] == DRIVER_DROPPED_OFF:
                 return handle_driver_dropped_off(driver_request)
+        elif driver_request['type'] == DRIVER_CANCEL:
+                return handle_driver_cancel(false, driver_request)
+        elif driver_request['type'] == DRIVER_CANCEL_AND_END:
+                return handle_driver_cancel(false, driver_request)                
         elif driver_request['type'] == DRIVER_GET_STATUS:
                 return handle_driver_get_status(driver_request)                
         # Implement rest of methods.
@@ -181,7 +190,7 @@ def handle_rider_waiting_for_match(rider_request):
                                          (matched_driver_id,), one=True)
                 if matched_driver == None:
                         raise InternalError(
-                                "Driver had matched_rider_id with no corresponding entry in other table")
+                                "Rider had matched_driver_id with no corresponding entry in drivers")
                 success_response = {"matched" : True,
                                     "lat" : get_attr_from_driver_row(matched_driver, "lat"),
                                     "lon" : get_attr_from_driver_row(matched_driver, "lon")}
@@ -203,6 +212,25 @@ def handle_rider_waiting_for_pickup(rider_request):
         return json.dumps({"cancelled": False,
                            "picked_up": picked_up})
 
+# Rider might cancel while waiting for match or waiting for pickup.
+# Remove rider from riders, and update corresponding row in drivers table.
+# TODO: Do we need to check that driver hasn't already picked up rider on cancel request?
+def handle_rider_cancel(rider_request):
+        existing_row = query_db("SELECT * FROM riders WHERE user_id = ?",
+                                (rider_request['user_id'],), one=True)
+        db = get_db()
+        if existing_row == None:
+                raise InternalError("Rider sent cancel request, but is not in db")
+        db.execute("DELETE FROM riders WHERE user_id = ?",
+                   (rider_request["user_id"], ))
+        db.commit()
+        matched_driver_id = get_attr_from_rider_row(existing_row, "matched_driver_id")
+        if matched_driver_id != None:
+                db.execute("UPDATE drivers SET matched_rider_id = NULL WHERE user_id = ?",
+                           (matched_driver_id,))
+                db.commit()
+        return json.dumps({})
+
 def handle_rider_get_status(rider_request):
         existing_row = query_db("SELECT * FROM riders WHERE user_id = ?",
                                 (rider_request['user_id'],), one=True)
@@ -213,6 +241,8 @@ def handle_rider_get_status(rider_request):
                            "lon": get_attr_from_rider_row(existing_row, "lon"),
                            "matched_driver_id": get_attr_from_rider_row(existing_row, "matched_driver_id"),
                            "picked_up": get_attr_from_rider_row(existing_row, "picked_up")})
+
+
 
 def handle_driver_requesting_rider(driver_request):
         # TODO: Instead of returning first option here, should try to do reasonable job of finding closest
@@ -263,7 +293,7 @@ def handle_driver_waiting_for_match(driver_request):
                                          (matched_rider_id,), one=True)
                 if matched_rider == None:
                         raise InternalError(
-                                "Rider had matched_driver_id with no corresponding entry in other table")
+                                "Driver had matched_rider_id with no corresponding entry in riders")
                 success_response = {"matched" : True,
                                     "lat" : get_attr_from_rider_row(matched_rider, "lat"),
                                     "lon" : get_attr_from_rider_row(matched_rider, "lon")}
@@ -317,6 +347,29 @@ def handle_driver_dropped_off(driver_request):
         db.execute("UPDATE riders SET matched_driver_id = NULL, picked_up = 0 WHERE user_id = ?",
                    (matched_rider_id, ))
         db.commit()        
+        return json.dumps({})
+
+# Driver might cancel while waiting for pickup. Driver cancel means driver reverts back
+# to default state, which is always looking for another rider. 
+# Don't delete row in drivers table unless close is true,
+# but update corresponding row in riders table.
+def handle_driver_cancel(end, driver_request):
+        existing_row = query_db("SELECT * FROM drivers WHERE user_id = ?",
+                                (driver_request['user_id'],), one=True)
+        db = get_db()
+        if existing_row == None:
+                raise InputError("Driver sent cancel request, but is not in db")
+        if end:
+                db.execute("DELETE FROM drivers WHERE user_id = ?",
+                           (driver_request["user_id"], ))
+                db.commit()
+        
+        matched_rider_id = get_attr_from_driver_row(existing_row, "matched_rider_id")
+        if matched_rider_id == None:
+                raise InputError("Driver sent cancel request, but is not matched to any rider")                
+        db.execute("UPDATE riders SET matched_rider_id = NULL WHERE user_id = ?",
+                   (matched_driver_id,))
+        db.commit()
         return json.dumps({})
 
 def handle_driver_get_status(driver_request):
